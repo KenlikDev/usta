@@ -400,6 +400,45 @@ fn edit_selected_object(
     }
 }
 
+fn control_camera(
+    mut camera_query: Query<&mut Transform, With<Camera3d>>,
+    mut orbit: ResMut<OrbitCamera>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    mouse_motion: Res<AccumulatedMouseMotion>,
+    mouse_scroll: Res<AccumulatedMouseScroll>,
+    keys: Res<ButtonInput<KeyCode>>,
+) {
+    if keys.just_pressed(KeyCode::Home) {
+        orbit.reset();
+    }
+
+    let delta = mouse_motion.delta;
+
+    if mouse_buttons.pressed(MouseButton::Right) {
+        orbit.yaw -= delta.x * 0.006;
+        orbit.pitch = (orbit.pitch + delta.y * 0.006).clamp(-1.40, 1.40);
+    }
+
+    if mouse_buttons.pressed(MouseButton::Middle) {
+        let pan_scale = orbit.distance * 0.0015;
+        let right = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin());
+        orbit.target -= right * delta.x * pan_scale;
+        orbit.target += Vec3::Y * delta.y * pan_scale;
+    }
+
+    if mouse_scroll.delta.y != 0.0 {
+        let scroll_amount = mouse_scroll.delta.y.clamp(-10.0, 10.0);
+        orbit.distance = (orbit.distance * (-scroll_amount * 0.08).exp()).clamp(2.0, 40.0);
+    }
+
+    let Ok(mut camera_transform) = camera_query.single_mut() else {
+        return;
+    };
+
+    camera_transform.translation = orbit.position();
+    camera_transform.look_at(orbit.target, Vec3::Y);
+}
+
 fn handle_document_shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     mut status: ResMut<EditorStatus>,

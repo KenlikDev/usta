@@ -378,6 +378,10 @@ mod tests {
     fn transform_command_rotates_around_y() {
         let mut transform = Transform::IDENTITY;
         apply_transform_command(&mut transform, TransformCommand::RotateY(0.5));
-        assert!(transform.rotation.abs_diff_eq(Quat::from_rotation_y(0.5), 1.0e-5));
+        assert!(
+            transform
+                .rotation
+                .abs_diff_eq(Quat::from_rotation_y(0.5), 1.0e-5)
+        );
     }
 }

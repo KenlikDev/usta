@@ -115,7 +115,11 @@ fn clear_selection(_click: On<PointerClick>, mut selected: ResMut<SelectedObject
     selected.0 = None;
 }
 
-fn make_scene_object(id: impl Into<String>, name: impl Into<String>, transform: &Transform) -> SceneObject {
+fn make_scene_object(
+    id: impl Into<String>,
+    name: impl Into<String>,
+    transform: &Transform,
+) -> SceneObject {
     SceneObject {
         id: id.into(),
         name: name.into(),
@@ -266,10 +270,7 @@ fn update_inspector(
     *panel = Text::new(inspector_text(selection));
 }
 
-fn update_status_panel(
-    status: Res<EditorStatus>,
-    mut panels: Query<&mut Text, With<StatusPanel>>,
-) {
+fn update_status_panel(status: Res<EditorStatus>, mut panels: Query<&mut Text, With<StatusPanel>>) {
     if !status.is_changed() || status.0.is_empty() {
         return;
     }
@@ -388,8 +389,7 @@ fn handle_document_shortcuts(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut selected: ResMut<SelectedObject>,
 ) {
-    let control_pressed =
-        keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    let control_pressed = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
     if !control_pressed {
         return;
     }
@@ -398,11 +398,8 @@ fn handle_document_shortcuts(
         let mut scene_objects = objects
             .iter()
             .map(|(_, object, name, transform)| {
-                let mut scene_object = make_scene_object(
-                    object.id.clone(),
-                    name.as_str(),
-                    transform,
-                );
+                let mut scene_object =
+                    make_scene_object(object.id.clone(), name.as_str(), transform);
                 scene_object.kind = object.kind;
                 scene_object
             })

@@ -125,10 +125,7 @@ fn draw_ground_grid(mut gizmos: Gizmos) {
     // Gizmo grids are drawn in the XY plane by default; rotate onto the XZ ground.
     gizmos
         .grid(
-            Isometry3d::new(
-                Vec3::new(0.0, 0.002, 0.0),
-                Quat::from_rotation_x(FRAC_PI_2),
-            ),
+            Isometry3d::new(Vec3::new(0.0, 0.002, 0.0), Quat::from_rotation_x(FRAC_PI_2)),
             UVec2::splat(24),
             Vec2::splat(1.0),
             Color::srgb(0.22, 0.27, 0.34),

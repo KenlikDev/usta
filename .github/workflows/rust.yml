@@ -1,13 +1,15 @@
 name: Rust checks
 
 on:
-  push:
-    branches:
-      - "spike/**"
   pull_request:
     branches:
       - main
       - "docs/product-foundation"
+  workflow_dispatch:
+
+concurrency:
+  group: rust-checks-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

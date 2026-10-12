@@ -257,22 +257,40 @@ fn edit_selected_object(
     };
 
     if keys.just_pressed(KeyCode::ArrowLeft) {
-        apply_transform_command(&mut transform, TransformCommand::Translate(Vec3::new(-step, 0.0, 0.0)));
+        apply_transform_command(
+            &mut transform,
+            TransformCommand::Translate(Vec3::new(-step, 0.0, 0.0)),
+        );
     }
     if keys.just_pressed(KeyCode::ArrowRight) {
-        apply_transform_command(&mut transform, TransformCommand::Translate(Vec3::new(step, 0.0, 0.0)));
+        apply_transform_command(
+            &mut transform,
+            TransformCommand::Translate(Vec3::new(step, 0.0, 0.0)),
+        );
     }
     if keys.just_pressed(KeyCode::ArrowUp) {
-        apply_transform_command(&mut transform, TransformCommand::Translate(Vec3::new(0.0, 0.0, -step)));
+        apply_transform_command(
+            &mut transform,
+            TransformCommand::Translate(Vec3::new(0.0, 0.0, -step)),
+        );
     }
     if keys.just_pressed(KeyCode::ArrowDown) {
-        apply_transform_command(&mut transform, TransformCommand::Translate(Vec3::new(0.0, 0.0, step)));
+        apply_transform_command(
+            &mut transform,
+            TransformCommand::Translate(Vec3::new(0.0, 0.0, step)),
+        );
     }
     if keys.just_pressed(KeyCode::PageUp) {
-        apply_transform_command(&mut transform, TransformCommand::Translate(Vec3::new(0.0, step, 0.0)));
+        apply_transform_command(
+            &mut transform,
+            TransformCommand::Translate(Vec3::new(0.0, step, 0.0)),
+        );
     }
     if keys.just_pressed(KeyCode::PageDown) {
-        apply_transform_command(&mut transform, TransformCommand::Translate(Vec3::new(0.0, -step, 0.0)));
+        apply_transform_command(
+            &mut transform,
+            TransformCommand::Translate(Vec3::new(0.0, -step, 0.0)),
+        );
     }
     if keys.just_pressed(KeyCode::KeyQ) {
         apply_transform_command(&mut transform, TransformCommand::RotateY(-0.1));

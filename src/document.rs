@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
 };
@@ -111,6 +111,12 @@ impl SceneDocument {
                 .iter()
                 .map(|value| value * value)
                 .sum::<f32>();
+            if !rotation_length_squared.is_finite() {
+                return Err(format!(
+                    "object {} has a rotation quaternion whose magnitude overflows",
+                    object.id
+                ));
+            }
             if rotation_length_squared < 1.0e-12 {
                 return Err(format!(
                     "object {} has an invalid zero-length rotation quaternion",
@@ -149,7 +155,7 @@ impl SceneDocument {
         temporary_name.push(".tmp");
         let temporary_path = PathBuf::from(temporary_name);
 
-        let result = (|| {
+        let result: Result<(), String> = (|| {
             let mut file = OpenOptions::new()
                 .write(true)
                 .create(true)
@@ -268,6 +274,19 @@ mod tests {
         cube.rotation_xyzw = [0.0; 4];
         let document = SceneDocument::new(vec![cube]);
         assert!(document.validate().unwrap_err().contains("zero-length"));
+    }
+
+    #[test]
+    fn overflowing_quaternion_magnitude_is_rejected() {
+        let mut cube = SceneObject::cube("cube-0001", "Cube", [0.0, 0.5, 0.0]);
+        cube.rotation_xyzw = [f32::MAX, f32::MAX, 0.0, 1.0];
+        let document = SceneDocument::new(vec![cube]);
+        assert!(
+            document
+                .validate()
+                .unwrap_err()
+                .contains("magnitude overflows")
+        );
     }
 
     #[test]

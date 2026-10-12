@@ -33,11 +33,7 @@ pub struct SceneObject {
 }
 
 impl SceneObject {
-    pub fn cube(
-        id: impl Into<String>,
-        name: impl Into<String>,
-        translation: [f32; 3],
-    ) -> Self {
+    pub fn cube(id: impl Into<String>, name: impl Into<String>, translation: [f32; 3]) -> Self {
         Self {
             id: id.into(),
             name: name.into(),
@@ -140,8 +136,8 @@ impl SceneDocument {
     }
 
     pub fn from_json(json: &str) -> Result<Self, String> {
-        let document: Self = serde_json::from_str(json)
-            .map_err(|error| format!("invalid scene JSON: {error}"))?;
+        let document: Self =
+            serde_json::from_str(json).map_err(|error| format!("invalid scene JSON: {error}"))?;
         document.validate()?;
         Ok(document)
     }
@@ -224,7 +220,9 @@ mod tests {
     #[test]
     fn json_round_trip_preserves_object_identity_and_transform() {
         let original = sample_document();
-        let json = original.to_json_pretty().expect("document should serialize");
+        let json = original
+            .to_json_pretty()
+            .expect("document should serialize");
         let loaded = SceneDocument::from_json(&json).expect("document should deserialize");
         assert_eq!(loaded, original);
     }
@@ -280,6 +278,11 @@ mod tests {
     #[test]
     fn empty_scene_is_rejected_for_this_prototype() {
         let document = SceneDocument::new(Vec::new());
-        assert!(document.validate().unwrap_err().contains("no editable objects"));
+        assert!(
+            document
+                .validate()
+                .unwrap_err()
+                .contains("no editable objects")
+        );
     }
 }

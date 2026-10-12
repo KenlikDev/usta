@@ -2,11 +2,16 @@
 //!
 //! This is intentionally a disposable prototype, not the final engine architecture.
 
+mod document;
+
 use bevy::{
     input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll},
     prelude::*,
 };
-use std::f32::consts::FRAC_PI_2;
+use document::{PrimitiveKind, SceneDocument, SceneObject};
+use std::path::Path;
+
+const SCENE_FILE: &str = "usta_scene.json";
 
 fn main() {
     App::new()
@@ -24,6 +29,7 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.035, 0.045, 0.065)))
         .insert_resource(OrbitCamera::default())
         .insert_resource(SelectedObject::default())
+        .insert_resource(EditorStatus::default())
         .add_systems(Startup, setup_scene)
         .add_systems(
             Update,
@@ -32,6 +38,8 @@ fn main() {
                 draw_ground_grid,
                 edit_selected_object,
                 update_inspector,
+                handle_document_shortcuts,
+                update_status_panel,
             ),
         )
         .run();
@@ -68,13 +76,23 @@ impl OrbitCamera {
 }
 
 #[derive(Component)]
-struct EditableObject;
+struct EditableObject {
+    /// Stable ID that belongs to the document, not to Bevy's ECS.
+    id: String,
+    kind: PrimitiveKind,
+}
 
 #[derive(Component)]
 struct InspectorPanel;
 
+#[derive(Component)]
+struct StatusPanel;
+
 #[derive(Resource, Default)]
 struct SelectedObject(Option<Entity>);
+
+#[derive(Resource, Default)]
+struct EditorStatus(String);
 
 #[derive(Clone, Copy)]
 enum TransformCommand {
@@ -97,19 +115,59 @@ fn clear_selection(_click: On<PointerClick>, mut selected: ResMut<SelectedObject
     selected.0 = None;
 }
 
+fn make_scene_object(id: impl Into<String>, name: impl Into<String>, transform: &Transform) -> SceneObject {
+    SceneObject {
+        id: id.into(),
+        name: name.into(),
+        kind: PrimitiveKind::Cube,
+        translation: transform.translation.to_array(),
+        rotation_xyzw: transform.rotation.to_array(),
+        scale: transform.scale.to_array(),
+    }
+}
+
+fn spawn_scene_object(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    object: SceneObject,
+) {
+    // Current MVP supports cube primitives. The enum in the document format makes this
+    // explicit and lets unsupported kinds be rejected instead of silently remapped.
+    match object.kind {
+        PrimitiveKind::Cube => {
+            let transform = Transform {
+                translation: Vec3::from_array(object.translation),
+                rotation: Quat::from_array(object.rotation_xyzw).normalize(),
+                scale: Vec3::from_array(object.scale),
+            };
+            commands
+                .spawn((
+                    Name::new(object.name.clone()),
+                    EditableObject {
+                        id: object.id,
+                        kind: object.kind,
+                    },
+                    Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+                    MeshMaterial3d(materials.add(Color::srgb(0.20, 0.54, 0.92))),
+                    transform,
+                ))
+                .observe(select_object);
+        }
+    }
+}
+
 fn setup_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // Viewport camera. Camera movement is handled separately from scene data.
     commands.spawn((
         Name::new("Editor Camera"),
         Camera3d::default(),
         Transform::from_xyz(7.0, 5.0, 8.0).looking_at(Vec3::new(0.0, 0.45, 0.0), Vec3::Y),
     ));
 
-    // Ground clicks clear the current object selection.
     commands
         .spawn((
             Name::new("Ground"),
@@ -119,16 +177,8 @@ fn setup_scene(
         ))
         .observe(clear_selection);
 
-    // First editable-object placeholder: one standard cube.
-    commands
-        .spawn((
-            Name::new("Cube"),
-            EditableObject,
-            Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-            MeshMaterial3d(materials.add(Color::srgb(0.20, 0.54, 0.92))),
-            Transform::from_xyz(0.0, 0.5, 0.0),
-        ))
-        .observe(select_object);
+    let default_cube = SceneObject::cube("cube-0001", "Cube", [0.0, 0.5, 0.0]);
+    spawn_scene_object(&mut commands, &mut meshes, &mut materials, default_cube);
 
     commands.spawn((
         Name::new("Key Light"),
@@ -139,7 +189,7 @@ fn setup_scene(
     commands.spawn((
         Name::new("Prototype Help"),
         Text::new(
-            "USTA  /  SCENE WORKBENCH\n\n             VIEWPORT\n             Left-click cube  Select\n             Right-drag       Orbit\n             Middle-drag      Pan\n             Mouse wheel      Zoom\n             Home             Reset view\n\n             EDIT SELECTED CUBE\n             Arrow keys       Move X / Z\n             Page Up / Down   Move Y\n             Q / E            Rotate Y\n             Hold Shift       Larger step",
+            "USTA  /  SCENE WORKBENCH\n\n             VIEWPORT\n             Left-click cube  Select\n             Right-drag       Orbit\n             Middle-drag      Pan\n             Mouse wheel      Zoom\n             Home             Reset view\n\n             EDIT SELECTED CUBE\n             Arrow keys       Move X / Z\n             Page Up / Down   Move Y\n             Q / E            Rotate Y\n             Hold Shift       Larger step\n\n             PROJECT FILE\n             Ctrl+S            Save scene\n             Ctrl+O            Load scene",
         ),
         TextColor(Color::srgb(0.88, 0.91, 0.96)),
         Node {
@@ -166,38 +216,67 @@ fn setup_scene(
         },
         BackgroundColor(Color::srgba(0.055, 0.07, 0.095, 0.92)),
     ));
+
+    commands.spawn((
+        Name::new("Document Status"),
+        StatusPanel,
+        Text::new("Ready — Ctrl+S saves, Ctrl+O loads usta_scene.json."),
+        TextColor(Color::srgb(0.76, 0.92, 0.82)),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: px(16),
+            left: px(16),
+            padding: UiRect::all(px(10)),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.055, 0.07, 0.095, 0.92)),
+    ));
 }
 
-fn inspector_text(selection: Option<(&str, &Transform)>) -> String {
+fn inspector_text(selection: Option<(&EditableObject, &Name, &Transform)>) -> String {
     match selection {
-        Some((name, transform)) => format!(
-            "OUTLINER\n\nScene\n  Ground\n  > {name}\n  Key Light\n  Editor Camera\n\n             INSPECTOR\nSelected: {name}\n\n             POSITION\nX  {:>7.2}\nY  {:>7.2}\nZ  {:>7.2}\n\n             ROTATION Y\n{:>7.2} rad",
+        Some((object, name, transform)) => format!(
+            "OUTLINER\n\nScene\n  Ground\n  > {} ({})\n  Key Light\n  Editor Camera\n\n             INSPECTOR\nSelected: {}\n\n             POSITION\nX  {:>7.2}\nY  {:>7.2}\nZ  {:>7.2}\n\n             ROTATION Y\n{:>7.2} rad\n\n             SCALE\nX  {:>7.2}\nY  {:>7.2}\nZ  {:>7.2}",
+            name.as_str(),
+            object.id,
+            name.as_str(),
             transform.translation.x,
             transform.translation.y,
             transform.translation.z,
             transform.rotation.to_euler(EulerRot::YXZ).0,
+            transform.scale.x,
+            transform.scale.y,
+            transform.scale.z,
         ),
         None => String::from(
-            "OUTLINER\n\nScene\n  Ground\n  Cube\n  Key Light\n  Editor Camera\n\n             INSPECTOR\nNo object selected.\n\nClick the cube to inspect and edit it.",
+            "OUTLINER\n\nScene\n  Ground\n  Cube\n  Key Light\n  Editor Camera\n\n             INSPECTOR\nNo object selected.\n\nClick a cube to inspect and edit it.",
         ),
     }
 }
 
 fn update_inspector(
     selected: Res<SelectedObject>,
-    objects: Query<(Entity, &Name, &Transform), With<EditableObject>>,
+    objects: Query<(&EditableObject, &Name, &Transform)>,
     mut panels: Query<&mut Text, With<InspectorPanel>>,
 ) {
-    let selection = selected.0.and_then(|entity| {
-        objects
-            .get(entity)
-            .ok()
-            .map(|(_, name, transform)| (name.as_str(), transform))
-    });
+    let selection = selected.0.and_then(|entity| objects.get(entity).ok());
     let Ok(mut panel) = panels.single_mut() else {
         return;
     };
     *panel = Text::new(inspector_text(selection));
+}
+
+fn update_status_panel(
+    status: Res<EditorStatus>,
+    mut panels: Query<&mut Text, With<StatusPanel>>,
+) {
+    if !status.is_changed() || status.0.is_empty() {
+        return;
+    }
+    let Ok(mut panel) = panels.single_mut() else {
+        return;
+    };
+    *panel = Text::new(status.0.clone());
 }
 
 fn draw_ground_grid(
@@ -205,17 +284,18 @@ fn draw_ground_grid(
     selected: Res<SelectedObject>,
     objects: Query<&Transform, With<EditableObject>>,
 ) {
-    // Gizmo grids are drawn in the XY plane by default; rotate onto the XZ ground.
     gizmos
         .grid(
-            Isometry3d::new(Vec3::new(0.0, 0.002, 0.0), Quat::from_rotation_x(FRAC_PI_2)),
+            Isometry3d::new(
+                Vec3::new(0.0, 0.002, 0.0),
+                Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+            ),
             UVec2::splat(24),
             Vec2::splat(1.0),
             Color::srgb(0.22, 0.27, 0.34),
         )
         .outer_edges();
 
-    // A small colored axis cross helps establish the world origin.
     gizmos.line(
         Vec3::new(-1.5, 0.012, 0.0),
         Vec3::new(1.5, 0.012, 0.0),
@@ -227,7 +307,6 @@ fn draw_ground_grid(
         Color::srgb(0.25, 0.55, 0.92),
     );
 
-    // Draw a wireframe around the selected object.
     if let Some(entity) = selected.0
         && let Ok(transform) = objects.get(entity)
     {
@@ -300,43 +379,67 @@ fn edit_selected_object(
     }
 }
 
-fn control_camera(
-    mut camera_query: Query<&mut Transform, With<Camera3d>>,
-    mut orbit: ResMut<OrbitCamera>,
-    mouse_buttons: Res<ButtonInput<MouseButton>>,
-    mouse_motion: Res<AccumulatedMouseMotion>,
-    mouse_scroll: Res<AccumulatedMouseScroll>,
+fn handle_document_shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
+    mut status: ResMut<EditorStatus>,
+    mut commands: Commands,
+    objects: Query<(Entity, &EditableObject, &Name, &Transform)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut selected: ResMut<SelectedObject>,
 ) {
-    if keys.just_pressed(KeyCode::Home) {
-        orbit.reset();
-    }
-
-    let delta = mouse_motion.delta;
-
-    if mouse_buttons.pressed(MouseButton::Right) {
-        orbit.yaw -= delta.x * 0.006;
-        orbit.pitch = (orbit.pitch + delta.y * 0.006).clamp(-1.40, 1.40);
-    }
-
-    if mouse_buttons.pressed(MouseButton::Middle) {
-        let pan_scale = orbit.distance * 0.0015;
-        let right = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin());
-        orbit.target -= right * delta.x * pan_scale;
-        orbit.target += Vec3::Y * delta.y * pan_scale;
-    }
-
-    if mouse_scroll.delta.y != 0.0 {
-        let scroll_amount = mouse_scroll.delta.y.clamp(-10.0, 10.0);
-        orbit.distance = (orbit.distance * (-scroll_amount * 0.08).exp()).clamp(2.0, 40.0);
-    }
-
-    let Ok(mut camera_transform) = camera_query.single_mut() else {
+    let control_pressed =
+        keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    if !control_pressed {
         return;
-    };
+    }
 
-    camera_transform.translation = orbit.position();
-    camera_transform.look_at(orbit.target, Vec3::Y);
+    if keys.just_pressed(KeyCode::KeyS) {
+        let mut scene_objects = objects
+            .iter()
+            .map(|(_, object, name, transform)| {
+                let mut scene_object = make_scene_object(
+                    object.id.clone(),
+                    name.as_str(),
+                    transform,
+                );
+                scene_object.kind = object.kind;
+                scene_object
+            })
+            .collect::<Vec<_>>();
+        scene_objects.sort_by(|left, right| left.id.cmp(&right.id));
+
+        let document = SceneDocument::new(scene_objects);
+        status.0 = match document.save_to(Path::new(SCENE_FILE)) {
+            Ok(()) => format!(
+                "Saved {} object(s) to {}.",
+                document.objects.len(),
+                SCENE_FILE
+            ),
+            Err(error) => format!("Save failed; live scene unchanged. {error}"),
+        };
+    } else if keys.just_pressed(KeyCode::KeyO) {
+        // Fully read, parse, and validate before scheduling any live-scene changes.
+        match SceneDocument::load_from(Path::new(SCENE_FILE)) {
+            Ok(document) => {
+                for (entity, _, _, _) in &objects {
+                    commands.entity(entity).despawn();
+                }
+                for object in document.objects.iter().cloned() {
+                    spawn_scene_object(&mut commands, &mut meshes, &mut materials, object);
+                }
+                selected.0 = None;
+                status.0 = format!(
+                    "Loaded {} object(s) from {}.",
+                    document.objects.len(),
+                    SCENE_FILE
+                );
+            }
+            Err(error) => {
+                status.0 = format!("Load failed; current scene kept. {error}");
+            }
+        }
+    }
 }
 
 #[cfg(test)]

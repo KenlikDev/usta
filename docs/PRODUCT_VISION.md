@@ -1,6 +1,6 @@
 # Usta Product Vision
 
-> **Status: Draft proposal — not yet approved.** This document separates the current repository facts from hypotheses proposed to help define the first usable version of Usta.
+> **Status: Draft proposal — not yet approved.** This document separates verified facts about the current prototype branch from product hypotheses that still need validation.
 
 ## 1. Product direction
 
@@ -8,16 +8,17 @@ Usta is intended to become an open-source, desktop-first 3D creation tool for mo
 
 The first release should prove one small, complete workflow rather than attempt to deliver a full 3D suite and game engine at once.
 
-## 2. What is known today
+## 2. Verified state of the prototype branch
 
-The current repository establishes only the following:
+The repository began as a README/license/gitignore scaffold. The current `spike/bevy-scene-workbench` branch now contains a small, experimental implementation:
 
-- The README describes Usta as an open-source desktop 3D creation tool, with modeling, a future game engine, and tools for architects, engineers, and designers.
-- The repository includes an MIT license.
-- The repository has not yet established an application implementation, build system, supported operating systems, or a confirmed technical stack.
-- Rust-related entries in `.gitignore` are a clue, not proof that Rust has been selected.
+- `Cargo.toml` uses Rust/Cargo, pins Bevy 0.20.0 for this prototype, and adds Serde/JSON serialization. This is a bounded experiment, not a final technology commitment.
+- `src/main.rs` provides a desktop viewport with cube primitives, click selection, keyboard transform editing, camera controls, and a minimal inspector/outliner presentation.
+- `src/document.rs` defines a renderer-independent, versioned scene document and JSON persistence, with validation and unit tests.
+- Ctrl+S and Ctrl+O save/load editable cube objects through `usta_scene.json` in the current working directory.
+- GitHub Actions runs Rust formatting, compile checks, and tests on Ubuntu Linux.
 
-These are repository observations, not claims about work that might exist outside this repository.
+Important limits remain: the project format currently stores cube objects only; camera, light, ground, selection, and UI state are transient; there is no file picker, production hierarchy, mesh editor, or undo/redo. The runtime viewport and save/load interactions still require manual verification on a declared desktop platform. The final supported OS and long-term UI/rendering stack have not been decided.
 
 ## 3. Initial product hypothesis
 
@@ -87,8 +88,8 @@ These features may be considered later, but none should be represented as curren
 
 - Which operating system is the first supported target?
 - Which workflow best represents the first user: general 3D scene creation, game-asset preparation, or another narrow use case?
-- Which language, UI toolkit, rendering backend, and windowing stack should be used?
-- What project-file format should be used, and how will schema migrations work?
+- Which desktop UI/windowing and rendering approach should become the long-term choice? The current Bevy implementation remains a prototype baseline.
+- How should the current schema-v1 JSON format evolve, and what compatibility/migration policy should future versions follow?
 - Which primitive types and object-manipulation interactions are essential for the MVP?
 - What minimum hardware and performance target should be tested?
 
@@ -96,11 +97,10 @@ Record consequential technical choices as Architecture Decision Records (ADRs), 
 
 ## 8. Definition of the next milestone
 
-The next milestone is **Foundation**, not feature completeness. It should end with:
-- a reviewed MVP scope;
-- a documented and evidence-based technology decision;
-- a minimal, buildable desktop application;
-- a basic automated CI check;
-- one small end-to-end proof that the selected UI can host a 3D viewport.
+The **Foundation** milestone is in progress, not complete. The current branch has a buildable application prototype, a basic CI workflow, and a first scene editing/save-load path in code. The milestone should not be marked complete until:
+- the current commit passes formatting, compile checks, and unit tests;
+- the viewport and pointer controls have been run manually on the first declared desktop platform;
+- Ctrl+S/Ctrl+O have been verified interactively, including an invalid-file case;
+- the MVP scope and long-term technology choice are reviewed with measured evidence.
 
-Do not mark this milestone complete until the build and checks have actually run.
+The goal remains a small, reliable vertical slice rather than feature completeness.

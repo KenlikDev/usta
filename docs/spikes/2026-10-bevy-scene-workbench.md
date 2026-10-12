@@ -1,27 +1,32 @@
 # UI and Rendering Technology Spike — October 2026
 
-**Status:** In progress. Bevy is selected only as the first prototype baseline; this is not approval of the final Usta architecture.
+**Status:** Prototype implemented; automated checks are being run against the latest commit. Bevy is selected only as the first prototype baseline; this is not approval of the final Usta architecture.
 
 ## Purpose
 
-Test whether Usta can quickly establish a native desktop window, a real 3D viewport, a ground grid, a primitive, and useful camera controls. Keep the test small enough to discard or replace without affecting the long-term product architecture.
+Test whether Usta can establish a native desktop window, a real 3D viewport, a ground grid, primitives, camera controls, and a minimal create/edit/save/load workflow. Keep the experiment small enough to discard or replace without committing the long-term product architecture to the engine.
 
 ## Current prototype
 
 The branch `spike/bevy-scene-workbench` contains a Bevy-based application spike with:
 
-- a native window titled "Usta — Scene Workbench (prototype)";
-- a 3D camera, a cube, a ground plane, a directional light, and an editor-style grid;
+- a native window, 3D camera, cube primitives, ground plane, directional light, and gizmo grid;
 - right-drag orbit, middle-drag pan, mouse-wheel zoom, and Home-to-reset controls;
-- mesh picking for left-click selection of the cube; clicking the ground clears selection;
-- a wireframe highlight and a small inspector that displays the selected object's position and Y rotation;
-- keyboard transform editing for the one cube (arrow keys, Page Up/Down, Q/E, with Shift for larger translation steps);
-- unit tests for orbit-camera invariants and transform commands;
-- a GitHub Actions workflow for formatting, compilation checks, and tests.
+- click selection for cubes; clicking the ground clears selection;
+- a selection wireframe and inspector readout for position, Y rotation, and scale;
+- keyboard transform editing for selected cubes;
+- a renderer-independent `src/document.rs` module for a versioned scene document;
+- Ctrl+S / Ctrl+O save/load for `usta_scene.json` in the current working directory;
+- schema and transform validation, atomic replacement during save, and tests for serialization, file round-trip, malformed data, duplicate IDs, unsupported schema versions, and invalid transforms;
+- a GitHub Actions workflow for Rust formatting, compilation checks, and tests.
 
-**Still not implemented:** a persistent scene/document model, file save/load, multiple independently editable objects, a true hierarchy panel, direct numeric inspector editing, mesh editing, materials UI, undo/redo, final application packaging, or a release process.
+The persisted scene currently includes **editable cube objects only**. Camera, ground, lights, editor layout, current selection, and UI state are transient and are not stored in the document.
 
-The outliner remains a simplified text view, not a functional hierarchy. This prototype should not be presented as a complete editor.
+## Document boundary
+
+The scene document deliberately contains no Bevy entity IDs, asset handles, UI components, or GPU state. Each object has a stable string ID, a primitive kind, translation, quaternion rotation in [x, y, z, w] order, and scale.
+
+The current JSON schema uses version 1 and allows up to 256 editable objects. The loader fully parses and validates the file before changing the live scene; on failure the existing scene is preserved and the UI reports the problem. This is a small persistence slice, not yet a migration framework or production file format.
 
 ## Candidate comparison
 
@@ -29,7 +34,7 @@ This comparison is based on official documentation, not on measured build or run
 
 | Candidate | Strength for this spike | Main risk / cost | Current assessment |
 |---|---|---|---|
-| **Bevy 0.20.0** | Integrated native windowing, 3D mesh/material rendering, UI, input, gizmos, and mesh-picking example. | Usta becomes coupled to a game engine's ECS/rendering model; APIs evolve quickly. | Best first spike for quickly proving a 3D interaction loop. Keep the persistent scene/document model independent from Bevy entities. |
+| **Bevy 0.20.0** | Integrated native windowing, 3D mesh/material rendering, UI, input, gizmos, and mesh-picking example. | Usta becomes coupled to a game engine's ECS/rendering model; APIs evolve quickly. | Useful for proving the first 3D interaction loop quickly. Keep the persistent scene/document model independent from Bevy entities. |
 | **egui 0.36.2 + wgpu** | Strong fit for tool panels and custom editor UI; official examples demonstrate embedding 3D rendering with WGPU callbacks. | Usta must own more rendering integration and graphics resource lifecycle. | Credible alternative if Bevy's engine coupling becomes a problem. Do a second spike before finalizing. |
 | **Slint 1.18.1 + WGPU** | Declarative UI and multiple desktop backends; documented external WGPU rendering integration. | The documented WGPU 30 integration is feature-gated as `unstable-wgpu-30`; verify API stability and compatibility before relying on it. | Needs a separate compatibility experiment before being considered for a renderer-heavy editor. |
 
@@ -56,19 +61,22 @@ cargo test --all-targets
 cargo run
 ```
 
-Linux build prerequisites are listed in `.github/workflows/rust.yml`. First build may take several minutes due to the engine and graphics dependencies.
+Linux build prerequisites are listed in `.github/workflows/rust.yml`. The first build may take a while due to the engine and graphics dependencies.
 
-## What must be observed before deciding
+On launch, the prototype starts with one cube. Select it, change its transform, press Ctrl+S to save, and press Ctrl+O to load the last saved scene. This uses a fixed project filename; no file picker is implemented yet.
 
-1. Does a clean checkout compile on the first declared target OS?
-2. Does a real viewport render the cube and grid without runtime errors?
-3. Are orbit, pan, zoom, selection, and keyboard transforms reliable?
-4. Can the persistent document model live outside Bevy entities and GPU resources?
-5. How much work is required to make a genuine hierarchy and editable inspector?
-6. Is the engine coupling acceptable for a general-purpose editor expected to grow toward modeling and engineering workflows?
+## Validation status
 
-## Exit criteria
+The earlier viewport + object-editing prototype passed formatting, compilation, and tests in GitHub Actions: https://github.com/KenlikDev/usta/actions/runs/38267559617
 
-The spike is successful only if the clean build, checks, and runtime workflow have actually been executed and recorded. A code commit or a successful `cargo check` alone does not prove that the viewport or pointer interactions work on a real machine.
+The latest persistence changes require a fresh completed run. Even a green CI result does not prove pointer selection or graphics render correctly on a real desktop; those still need manual verification on a declared target OS.
 
-After validation, compare results with a minimal egui + WGPU integration. Record the final choice in a separate ADR rather than treating this prototype choice as permanent.
+## Remaining technical questions
+
+1. Does the viewport and picking work reliably on the first supported desktop OS?
+2. Can a persistent document model remain independent of Bevy entities and GPU resources as multiple object kinds are added?
+3. Is Ctrl+S/Ctrl+O enough for the first user workflow, or should the next slice add a file picker and configurable path?
+4. How much work is required to replace the static outliner with a real hierarchy?
+5. Is the engine coupling acceptable for a general-purpose editor, or should an egui + WGPU spike be compared before expanding the architecture?
+
+After runtime verification, compare results with a minimal egui + WGPU integration. Record the final choice in a separate ADR rather than treating this prototype choice as permanent.

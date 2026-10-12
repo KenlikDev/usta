@@ -46,6 +46,10 @@ impl Default for OrbitCamera {
 }
 
 impl OrbitCamera {
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+
     fn position(&self) -> Vec3 {
         let rotation = Quat::from_rotation_y(self.yaw) * Quat::from_rotation_x(self.pitch);
         self.target + rotation * Vec3::new(0.0, 0.0, self.distance)
@@ -154,7 +158,7 @@ fn control_camera(
     keys: Res<ButtonInput<KeyCode>>,
 ) {
     if keys.just_pressed(KeyCode::Home) {
-        *orbit = OrbitCamera::default();
+        orbit.reset();
     }
 
     let delta = mouse_motion.delta;
@@ -197,11 +201,13 @@ mod tests {
 
     #[test]
     fn reset_restores_a_valid_camera_distance() {
-        let mut orbit = OrbitCamera::default();
-        orbit.distance = 100.0;
-        orbit.yaw = 100.0;
+        let mut orbit = OrbitCamera {
+            distance: 100.0,
+            yaw: 100.0,
+            ..OrbitCamera::default()
+        };
 
-        orbit = OrbitCamera::default();
+        orbit.reset();
 
         assert!((2.0..=40.0).contains(&orbit.distance));
         assert!((orbit.position().distance(orbit.target) - orbit.distance).abs() < 1.0e-4);

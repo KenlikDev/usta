@@ -37,6 +37,8 @@ cargo run
 - **Page Up / Page Down:** move along world Y.
 - **Q / E:** rotate around world Y.
 - **Hold Shift:** use a larger movement step.
+- **N:** create a new cube beside the selected object (or near the origin if none is selected).
+- **Delete:** remove the selected object. The scene may be empty; press **N** to add a new cube.
 
 **Project file**
 - **Ctrl+S:** save editable objects to `usta_scene.json` in the current working directory.
@@ -50,7 +52,7 @@ The inspector displays the selected object's position, Y rotation, and scale. Th
 
 Scene files use JSON with `schema_version: 1`, stable object IDs, primitive kinds, and explicit translation, quaternion rotation ([x, y, z, w]), and scale arrays.
 
-The loader validates the entire file before replacing the live scene. It rejects unsupported schema versions, duplicate/empty IDs, non-finite transforms, zero-length quaternions, near-zero scale components, malformed JSON, empty scenes, and documents above the prototype object limit. Invalid load attempts leave the current scene in place and display an error.
+The loader validates the entire file before replacing the live scene. It rejects unsupported schema versions, duplicate/empty IDs, non-finite transforms, zero-length quaternions, near-zero scale components, malformed JSON, and documents above the prototype object limit. Empty scenes are valid. Invalid load attempts leave the current scene in place and display an error.
 
 The format currently supports the `cube` primitive. Schema changes must increment the version and be covered by tests.
 

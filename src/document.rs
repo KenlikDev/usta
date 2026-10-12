@@ -69,10 +69,6 @@ impl SceneDocument {
             ));
         }
 
-        if self.objects.is_empty() {
-            return Err("scene contains no editable objects".to_owned());
-        }
-
         if self.objects.len() > MAX_SCENE_OBJECTS {
             return Err(format!(
                 "scene contains {} objects; the limit is {}",
@@ -295,13 +291,12 @@ mod tests {
     }
 
     #[test]
-    fn empty_scene_is_rejected_for_this_prototype() {
+    fn empty_scene_round_trips_for_blank_editor_state() {
         let document = SceneDocument::new(Vec::new());
-        assert!(
-            document
-                .validate()
-                .unwrap_err()
-                .contains("no editable objects")
-        );
+        let json = document
+            .to_json_pretty()
+            .expect("empty scene should serialize");
+        let loaded = SceneDocument::from_json(&json).expect("empty scene should deserialize");
+        assert_eq!(loaded, document);
     }
 }

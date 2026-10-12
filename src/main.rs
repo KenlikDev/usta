@@ -8,8 +8,8 @@ use bevy::{
     input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll},
     prelude::*,
 };
-use document::{PrimitiveKind, SceneDocument, SceneObject};
-use std::path::Path;
+use document::{MAX_SCENE_OBJECTS, PrimitiveKind, SceneDocument, SceneObject};
+use std::{collections::HashSet, path::Path};
 
 const SCENE_FILE: &str = "usta_scene.json";
 
@@ -38,6 +38,7 @@ fn main() {
                 draw_ground_grid,
                 edit_selected_object,
                 update_inspector,
+                handle_object_shortcuts,
                 handle_document_shortcuts,
                 update_status_panel,
             ),
@@ -130,12 +131,20 @@ fn make_scene_object(
     }
 }
 
+fn next_cube_id<'a>(existing_ids: impl IntoIterator<Item = &'a str>) -> String {
+    let existing_ids = existing_ids.into_iter().collect::<HashSet<_>>();
+    (1_u32..)
+        .map(|index| format!("cube-{index:04}"))
+        .find(|id| !existing_ids.contains(id.as_str()))
+        .expect("a scene with at most 256 objects always leaves a cube ID available")
+}
+
 fn spawn_scene_object(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     object: SceneObject,
-) {
+) -> Entity {
     // Current MVP supports cube primitives. The enum in the document format makes this
     // explicit and lets unsupported kinds be rejected instead of silently remapped.
     match object.kind {
@@ -145,7 +154,7 @@ fn spawn_scene_object(
                 rotation: Quat::from_array(object.rotation_xyzw).normalize(),
                 scale: Vec3::from_array(object.scale),
             };
-            commands
+            let entity = commands
                 .spawn((
                     Name::new(object.name.clone()),
                     EditableObject {
@@ -156,7 +165,9 @@ fn spawn_scene_object(
                     MeshMaterial3d(materials.add(Color::srgb(0.20, 0.54, 0.92))),
                     transform,
                 ))
-                .observe(select_object);
+                .id();
+            commands.entity(entity).observe(select_object);
+            entity
         }
     }
 }
@@ -193,7 +204,7 @@ fn setup_scene(
     commands.spawn((
         Name::new("Prototype Help"),
         Text::new(
-            "USTA  /  SCENE WORKBENCH\n\n             VIEWPORT\n             Left-click cube  Select\n             Right-drag       Orbit\n             Middle-drag      Pan\n             Mouse wheel      Zoom\n             Home             Reset view\n\n             EDIT SELECTED CUBE\n             Arrow keys       Move X / Z\n             Page Up / Down   Move Y\n             Q / E            Rotate Y\n             Hold Shift       Larger step\n\n             PROJECT FILE\n             Ctrl+S            Save scene\n             Ctrl+O            Load scene",
+            "USTA  /  SCENE WORKBENCH\n\n             VIEWPORT\n             Left-click cube  Select\n             Right-drag       Orbit\n             Middle-drag      Pan\n             Mouse wheel      Zoom\n             Home             Reset view\n\n             EDIT SELECTED CUBE\n             Arrow keys       Move X / Z\n             Page Up / Down   Move Y\n             Q / E            Rotate Y\n             Hold Shift       Larger step\n             N                Add cube\n             Delete           Remove selected\n\n             PROJECT FILE\n             Ctrl+S            Save scene\n             Ctrl+O            Load scene",
         ),
         TextColor(Color::srgb(0.88, 0.91, 0.96)),
         Node {
@@ -266,6 +277,9 @@ fn inspector_text(
             transform.scale.y,
             transform.scale.z,
         )),
+        None if object_names.is_empty() => {
+            panel.push_str("Scene is empty.\n\nPress N to add a cube.")
+        }
         None => panel.push_str(
             "No object selected.\n\nClick a cube to inspect and edit it.",
         ),
@@ -439,6 +453,73 @@ fn control_camera(
     camera_transform.look_at(orbit.target, Vec3::Y);
 }
 
+fn handle_object_shortcuts(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut status: ResMut<EditorStatus>,
+    mut commands: Commands,
+    objects: Query<(Entity, &EditableObject, &Transform)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut selected: ResMut<SelectedObject>,
+) {
+    let control_pressed =
+        keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    if control_pressed {
+        return;
+    }
+
+    if keys.just_pressed(KeyCode::KeyN) {
+        if objects.iter().count() >= MAX_SCENE_OBJECTS {
+            status.0 = format!("Cannot add cube: scene limit is {MAX_SCENE_OBJECTS} objects.");
+            return;
+        }
+
+        let existing_ids = objects
+            .iter()
+            .map(|(_, object, _)| object.id.as_str())
+            .collect::<Vec<_>>();
+        let id = next_cube_id(existing_ids.iter().copied());
+        let index = id
+            .strip_prefix("cube-")
+            .and_then(|suffix| suffix.parse::<u32>().ok())
+            .unwrap_or(1);
+        let name = if index == 1 {
+            "Cube".to_owned()
+        } else {
+            format!("Cube {index}")
+        };
+
+        let translation = selected
+            .0
+            .and_then(|entity| objects.get(entity).ok())
+            .map(|(_, _, transform)| {
+                transform.translation + Vec3::X * transform.scale.x.abs().max(1.0) * 1.5
+            })
+            .unwrap_or(Vec3::new(1.5, 0.5, 0.0));
+
+        let object = SceneObject::cube(id, name.clone(), translation.to_array());
+        selected.0 = Some(spawn_scene_object(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            object,
+        ));
+        status.0 = format!("Created {name}. Select it to edit its transform.");
+    } else if keys.just_pressed(KeyCode::Delete) {
+        let Some(entity) = selected.0 else {
+            return;
+        };
+        if objects.get(entity).is_err() {
+            selected.0 = None;
+            return;
+        }
+
+        commands.entity(entity).despawn();
+        selected.0 = None;
+        status.0 = "Removed selected object.".to_owned();
+    }
+}
+
 fn handle_document_shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     mut status: ResMut<EditorStatus>,
@@ -501,6 +582,12 @@ fn handle_document_shortcuts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn next_cube_id_fills_gaps_without_colliding() {
+        assert_eq!(next_cube_id(["cube-0001", "cube-0003"]), "cube-0002");
+        assert_eq!(next_cube_id(std::iter::empty()), "cube-0001");
+    }
 
     #[test]
     fn camera_starts_at_the_configured_orbit_distance() {

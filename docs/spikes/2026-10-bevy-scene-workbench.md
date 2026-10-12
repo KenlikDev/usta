@@ -15,6 +15,7 @@ The branch `spike/bevy-scene-workbench` contains a Bevy-based application spike 
 - click selection for cubes; clicking the ground clears selection;
 - a selection wireframe and inspector readout for position, Y rotation, and scale;
 - keyboard transform editing for selected cubes;
+- keyboard creation (N) and deletion (Delete) of cube objects, including support for an empty scene;
 - a renderer-independent `src/document.rs` module for a versioned scene document;
 - Ctrl+S / Ctrl+O save/load for `usta_scene.json` in the current working directory;
 - schema and transform validation, atomic replacement during save, and tests for serialization, file round-trip, malformed data, duplicate IDs, unsupported schema versions, and invalid transforms;
@@ -26,7 +27,7 @@ The persisted scene currently includes **editable cube objects only**. Camera, g
 
 The scene document deliberately contains no Bevy entity IDs, asset handles, UI components, or GPU state. Each object has a stable string ID, a primitive kind, translation, quaternion rotation in [x, y, z, w] order, and scale.
 
-The current JSON schema uses version 1 and allows up to 256 editable objects. The loader fully parses and validates the file before changing the live scene; on failure the existing scene is preserved and the UI reports the problem. This is a small persistence slice, not yet a migration framework or production file format.
+The current JSON schema uses version 1 and allows up to 256 editable objects; empty scenes are valid. The loader fully parses and validates the file before changing the live scene; on failure the existing scene is preserved and the UI reports the problem. This is a small persistence slice, not yet a migration framework or production file format.
 
 ## Candidate comparison
 
@@ -63,7 +64,7 @@ cargo run
 
 Linux build prerequisites are listed in `.github/workflows/rust.yml`. The first build may take a while due to the engine and graphics dependencies.
 
-On launch, the prototype starts with one cube. Select it, change its transform, press Ctrl+S to save, and press Ctrl+O to load the last saved scene. This uses a fixed project filename; no file picker is implemented yet.
+On launch, the prototype starts with one cube. Press N to add cubes and Delete to remove the selected cube (including the last one). Select a cube, change its transform, press Ctrl+S to save, and press Ctrl+O to load the last saved scene. This uses a fixed project filename; no file picker is implemented yet.
 
 ## Validation status
 

@@ -10,18 +10,30 @@ use std::f32::consts::FRAC_PI_2;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Usta — Scene Workbench (prototype)".into(),
-                resolution: (1440, 900).into(),
+        .add_plugins((
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Usta — Scene Workbench (prototype)".into(),
+                    resolution: (1440, 900).into(),
+                    ..default()
+                }),
                 ..default()
             }),
-            ..default()
-        }))
+            MeshPickingPlugin,
+        ))
         .insert_resource(ClearColor(Color::srgb(0.035, 0.045, 0.065)))
         .insert_resource(OrbitCamera::default())
+        .insert_resource(SelectedObject::default())
         .add_systems(Startup, setup_scene)
-        .add_systems(Update, (control_camera, draw_ground_grid))
+        .add_systems(
+            Update,
+            (
+                control_camera,
+                draw_ground_grid,
+                edit_selected_object,
+                update_inspector,
+            ),
+        )
         .run();
 }
 
@@ -38,7 +50,6 @@ impl Default for OrbitCamera {
         Self {
             target: Vec3::new(0.0, 0.45, 0.0),
             yaw: 0.65,
-            // Negative pitch places the camera above the target in this convention.
             pitch: -0.42,
             distance: 9.0,
         }
@@ -56,6 +67,36 @@ impl OrbitCamera {
     }
 }
 
+#[derive(Component)]
+struct EditableObject;
+
+#[derive(Component)]
+struct InspectorPanel;
+
+#[derive(Resource, Default)]
+struct SelectedObject(Option<Entity>);
+
+#[derive(Clone, Copy)]
+enum TransformCommand {
+    Translate(Vec3),
+    RotateY(f32),
+}
+
+fn apply_transform_command(transform: &mut Transform, command: TransformCommand) {
+    match command {
+        TransformCommand::Translate(offset) => transform.translation += offset,
+        TransformCommand::RotateY(radians) => transform.rotate_y(radians),
+    }
+}
+
+fn select_object(click: On<PointerClick>, mut selected: ResMut<SelectedObject>) {
+    selected.0 = Some(click.entity);
+}
+
+fn clear_selection(_click: On<PointerClick>, mut selected: ResMut<SelectedObject>) {
+    selected.0 = None;
+}
+
 fn setup_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -68,21 +109,26 @@ fn setup_scene(
         Transform::from_xyz(7.0, 5.0, 8.0).looking_at(Vec3::new(0.0, 0.45, 0.0), Vec3::Y),
     ));
 
-    // Neutral ground surface to give the grid and object a clear visual reference.
-    commands.spawn((
-        Name::new("Ground"),
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(40.0, 40.0))),
-        MeshMaterial3d(materials.add(Color::srgb(0.075, 0.09, 0.12))),
-        Transform::from_xyz(0.0, -0.025, 0.0),
-    ));
+    // Ground clicks clear the current object selection.
+    commands
+        .spawn((
+            Name::new("Ground"),
+            Mesh3d(meshes.add(Plane3d::default().mesh().size(40.0, 40.0))),
+            MeshMaterial3d(materials.add(Color::srgb(0.075, 0.09, 0.12))),
+            Transform::from_xyz(0.0, -0.025, 0.0),
+        ))
+        .observe(clear_selection);
 
-    // The first editable-object placeholder: one standard cube.
-    commands.spawn((
-        Name::new("Cube"),
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-        MeshMaterial3d(materials.add(Color::srgb(0.20, 0.54, 0.92))),
-        Transform::from_xyz(0.0, 0.5, 0.0),
-    ));
+    // First editable-object placeholder: one standard cube.
+    commands
+        .spawn((
+            Name::new("Cube"),
+            EditableObject,
+            Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+            MeshMaterial3d(materials.add(Color::srgb(0.20, 0.54, 0.92))),
+            Transform::from_xyz(0.0, 0.5, 0.0),
+        ))
+        .observe(select_object);
 
     commands.spawn((
         Name::new("Key Light"),
@@ -90,12 +136,10 @@ fn setup_scene(
         Transform::from_xyz(4.0, 8.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
-    // Heads-up controls panel. This panel is informational; it is not yet an
-    // interactive toolbar or a persistent scene hierarchy.
     commands.spawn((
         Name::new("Prototype Help"),
         Text::new(
-            "USTA  /  SCENE WORKBENCH\n\n             VIEWPORT CONTROLS\n             Right-drag   Orbit\n             Middle-drag  Pan\n             Mouse wheel  Zoom\n             Home         Reset view\n\n             PROTOTYPE SCOPE\n             • One cube\n             • Ground grid\n             • Orbit camera",
+            "USTA  /  SCENE WORKBENCH\n\n             VIEWPORT\n             Left-click cube  Select\n             Right-drag       Orbit\n             Middle-drag      Pan\n             Mouse wheel      Zoom\n             Home             Reset view\n\n             EDIT SELECTED CUBE\n             Arrow keys       Move X / Z\n             Page Up / Down   Move Y\n             Q / E            Rotate Y\n             Hold Shift       Larger step",
         ),
         TextColor(Color::srgb(0.88, 0.91, 0.96)),
         Node {
@@ -109,10 +153,9 @@ fn setup_scene(
     ));
 
     commands.spawn((
-        Name::new("Prototype Outliner"),
-        Text::new(
-            "OUTLINER\n\n             Scene\n             ├─ Ground\n             ├─ Cube\n             ├─ Key Light\n             └─ Editor Camera\n\n             INSPECTOR\n             Object editing is not yet implemented in this spike.",
-        ),
+        Name::new("Prototype Inspector"),
+        InspectorPanel,
+        Text::new(inspector_text(None)),
         TextColor(Color::srgb(0.76, 0.81, 0.88)),
         Node {
             position_type: PositionType::Absolute,
@@ -125,7 +168,43 @@ fn setup_scene(
     ));
 }
 
-fn draw_ground_grid(mut gizmos: Gizmos) {
+fn inspector_text(selection: Option<(&str, &Transform)>) -> String {
+    match selection {
+        Some((name, transform)) => format!(
+            "OUTLINER\n\nScene\n  Ground\n  > {name}\n  Key Light\n  Editor Camera\n\n             INSPECTOR\nSelected: {name}\n\n             POSITION\nX  {:>7.2}\nY  {:>7.2}\nZ  {:>7.2}\n\n             ROTATION Y\n{:>7.2} rad",
+            transform.translation.x,
+            transform.translation.y,
+            transform.translation.z,
+            transform.rotation.to_euler(EulerRot::YXZ).0,
+        ),
+        None => String::from(
+            "OUTLINER\n\nScene\n  Ground\n  Cube\n  Key Light\n  Editor Camera\n\n             INSPECTOR\nNo object selected.\n\nClick the cube to inspect and edit it.",
+        ),
+    }
+}
+
+fn update_inspector(
+    selected: Res<SelectedObject>,
+    objects: Query<(Entity, &Name, &Transform), With<EditableObject>>,
+    mut panels: Query<&mut Text, With<InspectorPanel>>,
+) {
+    let selection = selected.0.and_then(|entity| {
+        objects
+            .get(entity)
+            .ok()
+            .map(|(_, name, transform)| (name.as_str(), transform))
+    });
+    let Ok(mut panel) = panels.single_mut() else {
+        return;
+    };
+    **panel = inspector_text(selection);
+}
+
+fn draw_ground_grid(
+    mut gizmos: Gizmos,
+    selected: Res<SelectedObject>,
+    objects: Query<&Transform, With<EditableObject>>,
+) {
     // Gizmo grids are drawn in the XY plane by default; rotate onto the XZ ground.
     gizmos
         .grid(
@@ -147,6 +226,60 @@ fn draw_ground_grid(mut gizmos: Gizmos) {
         Vec3::new(0.0, 0.012, 1.5),
         Color::srgb(0.25, 0.55, 0.92),
     );
+
+    // Draw a wireframe around the selected object.
+    if let Some(entity) = selected.0
+        && let Ok(transform) = objects.get(entity)
+    {
+        let outline = Transform::from_translation(transform.translation)
+            .with_rotation(transform.rotation)
+            .with_scale(transform.scale * 1.08);
+        gizmos.cube(outline, Color::srgb(0.30, 1.0, 0.78));
+    }
+}
+
+fn edit_selected_object(
+    selected: Res<SelectedObject>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut objects: Query<&mut Transform, With<EditableObject>>,
+) {
+    let Some(entity) = selected.0 else {
+        return;
+    };
+    let Ok(mut transform) = objects.get_mut(entity) else {
+        return;
+    };
+
+    let step = if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+        0.5
+    } else {
+        0.1
+    };
+
+    if keys.just_pressed(KeyCode::ArrowLeft) {
+        apply_transform_command(&mut transform, TransformCommand::Translate(Vec3::new(-step, 0.0, 0.0)));
+    }
+    if keys.just_pressed(KeyCode::ArrowRight) {
+        apply_transform_command(&mut transform, TransformCommand::Translate(Vec3::new(step, 0.0, 0.0)));
+    }
+    if keys.just_pressed(KeyCode::ArrowUp) {
+        apply_transform_command(&mut transform, TransformCommand::Translate(Vec3::new(0.0, 0.0, -step)));
+    }
+    if keys.just_pressed(KeyCode::ArrowDown) {
+        apply_transform_command(&mut transform, TransformCommand::Translate(Vec3::new(0.0, 0.0, step)));
+    }
+    if keys.just_pressed(KeyCode::PageUp) {
+        apply_transform_command(&mut transform, TransformCommand::Translate(Vec3::new(0.0, step, 0.0)));
+    }
+    if keys.just_pressed(KeyCode::PageDown) {
+        apply_transform_command(&mut transform, TransformCommand::Translate(Vec3::new(0.0, -step, 0.0)));
+    }
+    if keys.just_pressed(KeyCode::KeyQ) {
+        apply_transform_command(&mut transform, TransformCommand::RotateY(-0.1));
+    }
+    if keys.just_pressed(KeyCode::KeyE) {
+        apply_transform_command(&mut transform, TransformCommand::RotateY(0.1));
+    }
 }
 
 fn control_camera(
@@ -211,5 +344,22 @@ mod tests {
 
         assert!((2.0..=40.0).contains(&orbit.distance));
         assert!((orbit.position().distance(orbit.target) - orbit.distance).abs() < 1.0e-4);
+    }
+
+    #[test]
+    fn transform_command_moves_a_selected_object() {
+        let mut transform = Transform::IDENTITY;
+        apply_transform_command(
+            &mut transform,
+            TransformCommand::Translate(Vec3::new(1.0, 2.0, 3.0)),
+        );
+        assert_eq!(transform.translation, Vec3::new(1.0, 2.0, 3.0));
+    }
+
+    #[test]
+    fn transform_command_rotates_around_y() {
+        let mut transform = Transform::IDENTITY;
+        apply_transform_command(&mut transform, TransformCommand::RotateY(0.5));
+        assert!(transform.rotation.abs_diff_eq(Quat::from_rotation_y(0.5), 1.0e-5));
     }
 }

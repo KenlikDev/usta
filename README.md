@@ -2,7 +2,7 @@
 
 Usta is an open-source desktop 3D creation tool focused on modeling, with a possible future path toward a game engine and tools for architects, engineers, and designers.
 
-> **Current status:** experimental foundation / technology spike. The current branch contains a Bevy-based viewport prototype with basic click-selection and keyboard transform editing for one cube. It is not yet a complete 3D editor and does not persist scenes to disk.
+> **Current status:** experimental foundation / technology spike. The current branch contains a Bevy-based scene workbench with one or more cube objects, click selection, keyboard transform editing, and local JSON save/load. It is not yet a complete 3D editor.
 
 ## Project documents
 
@@ -38,14 +38,28 @@ cargo run
 - **Q / E:** rotate around world Y.
 - **Hold Shift:** use a larger movement step.
 
-The inspector displays the selected object's position and Y rotation, and a wireframe marks its selection. The outliner remains a simplified text view. The prototype only has one editable object.
+**Project file**
+- **Ctrl+S:** save editable objects to `usta_scene.json` in the current working directory.
+- **Ctrl+O:** load `usta_scene.json`. The file must exist and pass schema and transform validation.
+- Saving/loading currently persists editable cube objects only. The camera, lights, ground, editor layout, selection, and UI state are not part of the scene document.
+- Scene files are local user data and are ignored by Git.
+
+The inspector displays the selected object's position, Y rotation, and scale. The outliner remains a simplified text panel.
+
+## Scene document format
+
+Scene files use JSON with `schema_version: 1`, stable object IDs, primitive kinds, and explicit translation, quaternion rotation ([x, y, z, w]), and scale arrays.
+
+The loader validates the entire file before replacing the live scene. It rejects unsupported schema versions, duplicate/empty IDs, non-finite transforms, zero-length quaternions, near-zero scale components, malformed JSON, empty scenes, and documents above the prototype object limit. Invalid load attempts leave the current scene in place and display an error.
+
+The format currently supports the `cube` primitive. Schema changes must increment the version and be covered by tests.
 
 ## Current limitations
 
-- No persistent scene document or save/load.
-- No real multi-object hierarchy, mesh editing, materials editor, undo/redo, or asset pipeline.
-- The selected cube's transform edits are transient and reset on restart.
-- Runtime input/rendering still requires manual verification on the target desktop OS.
+- No undo/redo, mesh editing, materials editor, production-grade hierarchy, or asset pipeline.
+- No file picker or user-configurable project path; Ctrl+S / Ctrl+O use the fixed filename above.
+- The app and runtime pointer/graphics behavior still require manual verification on the target desktop OS.
+- The final graphics/UI stack and supported OS list have not yet been decided.
 
 ## Quality checks
 

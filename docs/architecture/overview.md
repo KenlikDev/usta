@@ -1,19 +1,21 @@
 # Usta Architecture Overview
 
-> **Status: Draft proposal — not yet approved.** This is a conceptual architecture for review, not a description of implemented code. The current repository does not contain an application source tree or build configuration.
+> **Status: Draft proposal — not yet approved.** This document describes the intended boundaries and the subset currently demonstrated by the prototype. It is not a claim that Usta has a production-ready editor architecture.
 
 Related: [Product Vision](../PRODUCT_VISION.md).
 
 ## 1. Verified baseline
 
-As of the initial repository inspection:
+The initial repository was a README/license/gitignore scaffold. The current `spike/bevy-scene-workbench` branch adds:
 
-- The repository contains `README.md`, `LICENSE`, and `.gitignore`.
-- The README describes an open-source desktop 3D creation tool, modeling, a future game engine, and possible tools for architecture, engineering, and design.
-- Rust-related ignore patterns appear in `.gitignore`, but no `Cargo.toml`, Rust source files, or build configuration are present.
-- No UI toolkit, renderer, platform target, scene format, test framework, or CI workflow has been selected in the repository.
+- a Cargo project with Bevy 0.20.0 pinned for the prototype, plus Serde and Serde JSON;
+- `src/main.rs`, which implements a cube viewport, camera interaction, selection, keyboard transforms, and a minimal inspector/outliner presentation;
+- `src/document.rs`, which implements a renderer-independent schema-v1 scene document with stable object IDs and translation/rotation/scale persistence;
+- Ctrl+S/Ctrl+O JSON save/load through the fixed working-directory path `usta_scene.json`;
+- unit tests for document validation/round-trip and camera/transform operations;
+- a GitHub Actions workflow for formatting, all-target compile checks, and tests on Ubuntu Linux.
 
-Accordingly, the design below defines boundaries and decisions to investigate. It does not commit Usta to a programming language or library.
+This prototype remains limited: only cube primitives are supported, the outliner is a simple text presentation, there is no file picker or undo/redo, and camera/light/editor UI state is not serialized. The current code has not yet been manually exercised on a desktop OS. Bevy is a prototype baseline, not a final architecture decision.
 
 ## 2. Architectural goals
 
@@ -24,7 +26,7 @@ The first architecture should support the candidate 3D Scene Workbench MVP while
 - The viewport presents the scene but is not the only source of truth for it.
 - File persistence is versioned and testable without launching the UI.
 - The initial application remains simple; abstractions are added only where a real requirement justifies them.
-- The technical stack and supported platform are selected and documented before implementation depends on them.
+- The prototype stack is documented, while the final UI/rendering choice and supported desktop platform remain open and evidence-driven.
 
 ## 3. Proposed logical boundaries
 
@@ -59,7 +61,7 @@ Responsibilities:
 - selection-independent document mutations;
 - validation of document invariants.
 
-The core should not require a graphics device, window, or UI runtime to run its unit tests. Avoid putting GPU handles or UI widget state into the persistent scene model.
+The current `SceneDocument` / `SceneObject` types live in `src/document.rs` and contain no Bevy entity IDs, GPU handles, or widget state. They can be parsed, validated, and round-tripped without starting the renderer. The current schema stores the object ID, name, cube primitive kind, translation, quaternion rotation in [x, y, z, w] order, and scale.
 
 ### Viewport and renderer
 
@@ -79,7 +81,7 @@ Responsibilities:
 - manage references to geometry and material assets;
 - provide clear errors for corrupt, unsupported, or missing data.
 
-The project format and whether resources are embedded or stored beside the project are open decisions. Use a schema version from the first persisted format so that future migrations can be designed intentionally.
+The prototype currently uses JSON schema version 1 for editable cube objects, with a limit of 256 objects and validation for unsupported versions, duplicate/empty IDs, non-finite values, invalid quaternions, and near-zero scale. Geometry assets are not externalized yet. File picker UX, broader asset layout, and future schema migrations remain open decisions.
 
 ### UI/presentation
 
@@ -113,7 +115,7 @@ Platform adapters ----> shell, input, filesystem, graphics setup
 
 This diagram describes responsibilities, not a finalized package graph. In particular, the exact renderer-to-scene data boundary should be validated with a small technical spike.
 
-## 5. Initial domain model proposal
+## 5. Prototype domain model and future extensions
 
 Keep the first domain model small:
 
@@ -123,29 +125,27 @@ Keep the first domain model small:
 - **Geometry reference:** points to a built-in primitive or a later asset resource.
 - **Material reference:** optional in the earliest proof; extend after a minimal rendering path is working.
 
-An entity-component system, complex scene graph, node graph, plugin framework, and full asset database are not prerequisites for the first vertical slice. Select data structures from demonstrated needs, not from the ambition of the eventual product.
+The current implementation intentionally avoids making Bevy's ECS entities the durable document identity. A complex scene graph, node graph, plugin framework, and full asset database are not prerequisites for the first vertical slice. Select data structures from demonstrated needs, not from the ambition of the eventual product.
 
-## 6. Candidate first vertical slice
+## 6. Current vertical slice and remaining verification
 
-Build and verify one end-to-end path:
+The current prototype contains the following path in code:
 
-1. Start the application and open a viewport.
-2. Create a new in-memory scene.
-3. Render a ground grid and one primitive.
-4. Move the camera and select the primitive.
-5. Change the primitive's transform via a document command.
-6. Save the scene to a versioned local file.
-7. Load the file and verify the expected document state.
+1. Start a desktop window and render a grid, ground plane, light, and cube.
+2. Orbit/pan/zoom the camera.
+3. Select the cube and edit its transform via keyboard commands.
+4. Save the editable objects to schema-v1 JSON with Ctrl+S.
+5. Load/validate the file with Ctrl+O, replacing the live objects only after full parsing and validation succeeds.
 
-The first proof should validate that the chosen desktop shell, UI toolkit, and graphics backend can work together. It should not be mistaken for a complete editor.
+The CI compile check has passed for the current source commit, but the test stage is still running at the time this document is updated. A manual desktop run is also outstanding. The outliner remains simple text, and there is no file picker, editable numeric property fields, or undo/redo. These limits mean the prototype is not yet a complete editor.
 
 ## 7. Testing and quality gates
 
-### Unit tests
-- transform and document operations;
-- document invariant validation;
-- serialization/deserialization and schema-version handling;
-- malformed and unsupported project-file behavior.
+### Unit tests currently present
+- camera orbit invariants and transform commands;
+- JSON/file round-trip of stable object identity and transforms;
+- unsupported schema version and malformed JSON rejection;
+- duplicate IDs, empty scenes, non-finite transform values, zero-length quaternions, and overflowing quaternion magnitude rejection.
 
 ### Integration/smoke checks
 - clean checkout builds with documented commands;
@@ -168,28 +168,26 @@ No test or build should be reported as passing until it has actually been run an
 - Do not silently overwrite or discard a document when loading fails.
 - Define backup/recovery behavior before the editor is relied on for important work.
 
-These are design considerations; no implementation currently exists to verify them.
+The document layer validates project data before applying a load and writes through a temporary file before replacement. This does not yet cover imported assets, backup/recovery, or a manual end-to-end runtime test; those remain future reliability work.
 
 ## 9. Open architecture decisions
 
 The following decisions should be recorded as ADRs after small, evidence-based evaluations:
 
-1. **Language and build system:** Rust is one possibility suggested by `.gitignore`, not a confirmed choice.
-2. **Desktop UI and windowing:** compare candidate toolkits against target OS support, licensing, accessibility, packaging, and integration with the chosen rendering path.
-3. **Graphics API and renderer:** compare setup complexity, target hardware, debugging tools, and long-term maintenance.
-4. **Scene/document representation:** choose straightforward data structures that support stable identity, transformations, and validation.
-5. **Project file and asset layout:** choose a versioned format and define missing-resource and migration behavior.
-6. **Initial platform and CI:** define the first supported OS and a reproducible build/test environment.
+1. **Long-term UI/windowing:** Bevy UI is used for prototype overlays, but a production editor may need more capable panels, docking, and accessibility.
+2. **Long-term rendering:** Bevy's renderer is the current spike baseline; compare against egui + WGPU before committing to a general-purpose editor architecture.
+3. **Supported desktop platform:** CI currently checks Ubuntu Linux; the product's first supported OS and packaging targets are not formally declared.
+4. **Scene/document evolution:** schema v1 and stable string IDs exist; object hierarchy, additional primitive/resource kinds, migration policy, and compatibility guarantees remain open.
+5. **File UX:** the current filename is fixed to `usta_scene.json`; file picker, project paths, dirty state, and backup/recovery behavior remain future decisions.
 
 For each ADR, record context, alternatives, evaluation evidence, decision, consequences, and date. Do not infer a decision merely from an ignore file or an untested prototype.
 
 ## 10. Recommended next engineering step
 
-Run a time-boxed **technology spike** before building broad functionality. It should:
-- identify the first target operating system;
-- evaluate at least two plausible UI/rendering combinations against explicit requirements;
-- produce a minimal window with a working 3D viewport and basic input;
-- document build commands and observed limitations;
-- record the chosen stack in an ADR only after the spike succeeds.
+Finish verifying the existing vertical slice before broadening the application:
+- complete the current CI test run and record the result;
+- manually run the desktop app and verify selection, camera controls, Ctrl+S, Ctrl+O, and preservation of the current scene after a failed load;
+- compare a small egui + WGPU editor-panel experiment with the current Bevy approach before making the long-term stack choice;
+- then implement a configurable file path/file picker, unsaved-change state, and a genuine hierarchy/inspector.
 
-After that, scaffold the production project structure, establish CI, and implement the scene-create/save/reopen vertical slice. Avoid creating speculative engine subsystems until the first workflow has been proven.
+Avoid building speculative engine subsystems until the first end-to-end workflow has been proven on a declared target platform.

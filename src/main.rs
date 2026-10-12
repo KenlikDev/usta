@@ -197,7 +197,7 @@ fn update_inspector(
     let Ok(mut panel) = panels.single_mut() else {
         return;
     };
-    **panel = inspector_text(selection);
+    *panel = Text::new(inspector_text(selection));
 }
 
 fn draw_ground_grid(

@@ -107,8 +107,7 @@ fn setup_scene(
     commands.spawn((
         Name::new("Prototype Outliner"),
         Text::new(
-            "OUTLINER\n\n             Scene\n             ├─ Ground\n             ├─ Cube\n             ├─ Key Light\n             └─ Editor Camera\n\n             INSPECTOR\n             Object editing is not\
-             implemented in this spike.",
+            "OUTLINER\n\n             Scene\n             ├─ Ground\n             ├─ Cube\n             ├─ Key Light\n             └─ Editor Camera\n\n             INSPECTOR\n             Object editing is not yet implemented in this spike.",
         ),
         TextColor(Color::srgb(0.76, 0.81, 0.88)),
         Node {

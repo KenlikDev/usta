@@ -209,7 +209,7 @@ fn setup_scene(
     commands.spawn((
         Name::new("Prototype Inspector"),
         InspectorPanel,
-        Text::new(inspector_text(None)),
+        Text::new(inspector_text(None, &[String::from("Cube")])),
         TextColor(Color::srgb(0.76, 0.81, 0.88)),
         Node {
             position_type: PositionType::Absolute,
@@ -237,13 +237,27 @@ fn setup_scene(
     ));
 }
 
-fn inspector_text(selection: Option<(&EditableObject, &Name, &Transform)>) -> String {
+fn inspector_text(
+    selection: Option<(&EditableObject, &Name, &Transform)>,
+    object_names: &[String],
+) -> String {
+    let selected_name = selection.map(|(_, name, _)| name.as_str());
+    let mut panel = String::from("OUTLINER\n\nScene\n  Ground\n");
+    for name in object_names {
+        let marker = if Some(name.as_str()) == selected_name {
+            "> "
+        } else {
+            "  "
+        };
+        panel.push_str(&format!("  {marker}{name}\n"));
+    }
+    panel.push_str("  Key Light\n  Editor Camera\n\nINSPECTOR\n");
+
     match selection {
-        Some((object, name, transform)) => format!(
-            "OUTLINER\n\nScene\n  Ground\n  > {} ({})\n  Key Light\n  Editor Camera\n\n             INSPECTOR\nSelected: {}\n\n             POSITION\nX  {:>7.2}\nY  {:>7.2}\nZ  {:>7.2}\n\n             ROTATION Y\n{:>7.2} rad\n\n             SCALE\nX  {:>7.2}\nY  {:>7.2}\nZ  {:>7.2}",
+        Some((object, name, transform)) => panel.push_str(&format!(
+            "Selected: {} ({})\n\nPOSITION\nX  {:>7.2}\nY  {:>7.2}\nZ  {:>7.2}\n\n             ROTATION Y\n{:>7.2} rad\n\nSCALE\nX  {:>7.2}\nY  {:>7.2}\nZ  {:>7.2}",
             name.as_str(),
             object.id,
-            name.as_str(),
             transform.translation.x,
             transform.translation.y,
             transform.translation.z,
@@ -251,11 +265,13 @@ fn inspector_text(selection: Option<(&EditableObject, &Name, &Transform)>) -> St
             transform.scale.x,
             transform.scale.y,
             transform.scale.z,
-        ),
-        None => String::from(
-            "OUTLINER\n\nScene\n  Ground\n  Cube\n  Key Light\n  Editor Camera\n\n             INSPECTOR\nNo object selected.\n\nClick a cube to inspect and edit it.",
+        )),
+        None => panel.push_str(
+            "No object selected.\n\nClick a cube to inspect and edit it.",
         ),
     }
+
+    panel
 }
 
 fn update_inspector(
@@ -264,10 +280,14 @@ fn update_inspector(
     mut panels: Query<&mut Text, With<InspectorPanel>>,
 ) {
     let selection = selected.0.and_then(|entity| objects.get(entity).ok());
+    let object_names = objects
+        .iter()
+        .map(|(_, name, _)| name.as_str().to_owned())
+        .collect::<Vec<_>>();
     let Ok(mut panel) = panels.single_mut() else {
         return;
     };
-    *panel = Text::new(inspector_text(selection));
+    *panel = Text::new(inspector_text(selection, &object_names));
 }
 
 fn update_status_panel(status: Res<EditorStatus>, mut panels: Query<&mut Text, With<StatusPanel>>) {

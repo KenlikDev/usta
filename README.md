@@ -2,7 +2,7 @@
 
 Usta is an open-source desktop 3D creation tool focused on modeling, with a possible future path toward a game engine and tools for architects, engineers, and designers.
 
-> **Current status:** experimental foundation / technology spike. The current branch includes a Bevy-based viewport prototype; it is not yet a usable 3D editor and does not include persistent scene files or real object-editing tools.
+> **Current status:** experimental foundation / technology spike. The current branch contains a Bevy-based viewport prototype with basic click-selection and keyboard transform editing for one cube. It is not yet a complete 3D editor and does not persist scenes to disk.
 
 ## Project documents
 
@@ -25,12 +25,27 @@ cargo run
 
 ## Prototype controls
 
+**Viewport**
+- **Left-click cube:** select the cube; click the ground to clear selection.
 - **Right mouse button + drag:** orbit the camera.
 - **Middle mouse button + drag:** pan the view.
 - **Mouse wheel:** zoom.
 - **Home:** reset the camera.
 
-The prototype contains a cube, ground plane, grid, light, and informational UI overlays. The outliner/inspector panel is static and does not currently select or edit objects.
+**Selected cube**
+- **Arrow keys:** move along world X/Z.
+- **Page Up / Page Down:** move along world Y.
+- **Q / E:** rotate around world Y.
+- **Hold Shift:** use a larger movement step.
+
+The inspector displays the selected object's position and Y rotation, and a wireframe marks its selection. The outliner remains a simplified text view. The prototype only has one editable object.
+
+## Current limitations
+
+- No persistent scene document or save/load.
+- No real multi-object hierarchy, mesh editing, materials editor, undo/redo, or asset pipeline.
+- The selected cube's transform edits are transient and reset on restart.
+- Runtime input/rendering still requires manual verification on the target desktop OS.
 
 ## Quality checks
 
@@ -40,7 +55,7 @@ cargo check --all-targets
 cargo test --all-targets
 ```
 
-These commands are configured in GitHub Actions. Do not treat a passing build as proof of runtime rendering; the prototype must also be launched and manually checked on the declared target OS.
+These commands are configured in GitHub Actions. A passing CI run confirms formatting, compilation, and tests on the runner; it does not substitute for checking graphics and pointer interactions on a real desktop.
 
 ## License
 
